@@ -24,7 +24,10 @@ class MessageHandler(WebSocketHandler, MessageProcessor):
         MessageProcessor.__init__(self, strict=strict)
 
     def _conn_send(self, data):
-        return self.write_message(data, not istext(data))
+        """
+        Both JSON and MSGPACK are, actually, binary connections.
+        """
+        return self.write_message(data, True)
 
     def _conn_close(self, code, reason=''):
         return self.close(code, reason)
@@ -33,4 +36,4 @@ class MessageHandler(WebSocketHandler, MessageProcessor):
         self._conn_made()
 
     def on_message(self, message):
-        self._conn_message(message)
+        self._conn_message(message, not istext(message))
