@@ -1,45 +1,11 @@
 from cantrips.types.exception import factory
-
-
-class Feature(object):
-    """
-    Tries to import a specific feature.
-    """
-    _CLASS = None
-    Error = factory(['UNSATISFIED_IMPORT_REQ'])
-
-    @classmethod
-    def import_it(cls):
-        """
-        Performs the import only once.
-        """
-        if not cls._CLASS:
-            try:
-                cls._CLASS = cls._import_it()
-            except ImportError:
-                raise cls.Error(cls._import_error_message(), cls.Error.UNSATISFIED_IMPORT_REQ)
-        return cls._CLASS
-
-    @classmethod
-    def _import_it(cls):
-        """
-        Internal method - performs the import and returns the imported object.
-        """
-        return None
-
-    @classmethod
-    def _import_error_message(cls):
-        """
-        Internal method - displays the exception message
-        """
-        return None
+from cantrips.features import Feature
 
 
 class ConcurrentFutureFeature(Feature):
     """
     Feature - concurrent.futures.Future
     """
-    _CLASS = None
 
     @classmethod
     def _import_it(cls):
@@ -61,7 +27,6 @@ class TornadoFutureFeature(Feature):
     """
     Feature - tornado.concurrent.Future
     """
-    _CLASS = None
 
     @classmethod
     def _import_it(cls):
@@ -82,7 +47,6 @@ class TwistedDeferredFeature(Feature):
     """
     Feature - twisted.internet.defer.Deferred
     """
-    _CLASS = None
 
     def _import_it(cls):
         """
