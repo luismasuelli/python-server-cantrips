@@ -1,15 +1,13 @@
-import json
 import msgpack
 import logging
 from cantrips.types.exception import factory
 from cantrips.types.arguments import Arguments
+from cantrips.iteration import items
 from msgpack.exceptions import UnpackException
+from cantrips.protocol.messaging.formats import split_command, join_command, integer, string, get_serializer
 
 
 logger = logging.getLogger("cantrips.message.processor")
-_32bits = (1 << 32) - 1
-_split_integer = lambda u: (u >> 32, u & _32bits)
-_join_integer = lambda u, v: (u & _32bits) << 32 | (v & _32bits)
 
 
 class Packet(Arguments):
@@ -45,8 +43,8 @@ class Message(Packet):
     """
 
     Error = factory({
-        'CANNOT_SERIALIZE_NONCLIENT_MESSAGE': 1,
-        'CANNOT_UNSERIALIZE_NONSERVER_MESSAGE': 2,
+        'CANNOT_REPRESENT_NONCLIENT_MESSAGE': 1,
+        'CANNOT_RECONSTRUCT_NONCLIENT_MESSAGE': 2,
         'FACTORY_ALREADY_EXISTS': 3,
         'FACTORY_DOES_NOT_EXIST': 4,
         'NAMESPACE_ALREADY_EXISTS': 5,
@@ -55,9 +53,7 @@ class Message(Packet):
     })
 
     def __init__(self, namespace, command, direction, *args, **kwargs):
-        super(Message, self).__init__(_join_integer(namespace, command)
-                                      if isinstance(namespace, (int, long)) and isinstance(command, (int, long))
-                                      else "%s.%s" % (namespace, command), *args, **kwargs)
+        super(Message, self).__init__(join_command(namespace, command), *args, **kwargs)
         self.__direction = direction
 
     @property
@@ -69,7 +65,7 @@ class Message(Packet):
             return object.__setattr__(self, key, value)
         return super(Message, self).__setattr__(key, value)
 
-    def serialize(self, expect_clientwise=False):
+    def to_representation(self, expect_clientwise=False):
         parts = {
             "code": self.code
         }
@@ -81,8 +77,8 @@ class Message(Packet):
             parts['kwargs'] = self.kwargs
 
         if expect_clientwise and not (self.direction & MessageFactory.DIRECTION_CLIENT):
-            raise Message.Error("Message cannot be serialized since it's not client-wise",
-                                Message.Error.CANNOT_SERIALIZE_NONCLIENT_MESSAGE,
+            raise Message.Error("Message cannot be represented since it's not client-wise",
+                                Message.Error.CANNOT_REPRESENT_NONCLIENT_MESSAGE,
                                 parts=parts)
         else:
             return parts
@@ -169,9 +165,9 @@ class MessageNamespaceSet(object):
             "client": MessageFactory.DIRECTION_CLIENT,
             "both": MessageFactory.DIRECTION_BOTH
         }
-        for k, v in namespaces.iteritems():
+        for k, v in items(namespaces):
             x = self.register(k, True)
-            for k2, d in v.iteritems():
+            for k2, d in items(v):
                 x.register(k2, opts[d.lower()], True)
 
     def register(self, code, silent=False):
@@ -196,23 +192,20 @@ class MessageNamespaceSet(object):
                                 Message.Error.NAMESPACE_DOES_NOT_EXIST,
                                 namespace_code=code)
 
-    def unserialize(self, obj, expect_serverwise=False):
-        if not isinstance(obj, dict) or isinstance(obj.get('code'), (basestring, int, long)) or not isinstance(obj.get('args', []), (tuple, list)) or not isinstance(obj.get('kwargs', {}), dict):
+    def from_representation(self, obj, expect_serverwise=False):
+        if not isinstance(obj, dict) or isinstance(obj.get('code'), integer + (string,)) or not isinstance(obj.get('args', []), (tuple, list)) or not isinstance(obj.get('kwargs', {}), dict):
             raise Message.Error("Expected format message is {code:string, args:list, kwargs:dict}",
-                                Message.Error.INVALID_FORMAT,
-                                parts=obj)
+                                Message.Error.INVALID_FORMAT, parts=obj)
         else:
-            code_parts = obj['code'].rsplit(".", 1) if isinstance(obj['code'], basestring) else _split_integer(obj['code'])
+            code_parts = split_command(obj['code'])
             if len(code_parts) != 2:
                 raise Message.Error("Message code must be in format `namespace.code`. Current: " + obj['code'],
-                                    Message.Error.INVALID_FORMAT,
-                                    parts=obj)
+                                    Message.Error.INVALID_FORMAT, parts=obj)
             else:
                 factory = self.find(code_parts[0]).find(code_parts[1])
                 if expect_serverwise and not (factory.direction & MessageFactory.DIRECTION_SERVER):
                     raise Message.Error("Message cannot be unserialized since it's not server-wise",
-                                        Message.Error.CANNOT_UNSERIALIZE_NONSERVER_MESSAGE,
-                                        parts=obj)
+                                        Message.Error.CANNOT_RECONSTRUCT_NONCLIENT_MESSAGE, parts=obj)
                 return factory.build(*obj.get('args', []), **obj.get('kwargs', {}))
 
 
@@ -227,10 +220,10 @@ class MessageProcessor(object):
         Additionally, it lets the user specify whether
           the connection should use msgpack to encode
           the messages or json. Such are the values of
-          use_msgpack (True=msgpack, False=json).
+          `serializer` ('msgpack' => msgpack, 'json' => json).
         """
 
-        self.use_msgpack = True
+        self.serializer = True
         self.strict = strict
         self._setup_ns()
 
@@ -246,6 +239,8 @@ class MessageProcessor(object):
           received. This function must return a dictionary
           with key strings:
             { "name.space" : { "code": (direction), ... }, ... }
+        
+        Namespaces and codes may be strings or 32-bit integers.
 
         Where direction may be:
           MessageFactory.DIRECTION_SERVER : this message can go to the server
@@ -281,15 +276,9 @@ class MessageProcessor(object):
         Sends a packet with a namespace, a message code, and arbitrary
           arguments. Messages must be checked for their direction whether
           they can be sent to the client.
-
-        You can pass use_msgpack=False to force the protocol to use json, or use_msgpack=True
-          to force it to use msgpack. By not passing it, the format to be used will be obtained
-          from the `use_msgpack` property in this instance.
         """
-        use_msgpack = kwargs.pop('use_msgpack', self.use_msgpack)
-        serialized = self._ns_set.find(ns).find(code).build_message(*args, **kwargs).serialize(True)
-        # According to the determined format, we send the data.
-        data = msgpack.dumps(serialized, encoding='utf-8') if use_msgpack else json.dumps(serialized)
+        representation = self._ns_set.find(ns).find(code).build_message(*args, **kwargs).to_representation(True)
+        data = get_serializer(self.serializer).dumps(representation)
         self._conn_send(data)
 
     def _handlers(self):
@@ -309,8 +298,7 @@ class MessageProcessor(object):
           this function returns a True-evaluable value, the
           connection is closed.
         """
-        full_code = message.code
-        ns, code = full_code.rsplit('.', 1) if isinstance(full_code, (str, unicode)) else _split_integer(full_code)
+        ns, code = split_command(message.code)
         h = self._handlers().get(ns, {}).get(code, lambda socket, message: None)
         return h(self, message)
 
@@ -368,19 +356,9 @@ class MessageProcessor(object):
         except Exception as e:
             self._close_unknown(e)
 
-    def _guess_type(self, data):
-        """
-        Guesses the format type based on the first character. Since no type indicator other than
-          text/binary can be specified, and BOTH json and msgpack are binary protocols. However, only
-          JSON starts with '{' - If I receive a string starting with '{' in msgpack, it would be a
-          positive fixint, and we're never sending such structure without a wrapping object.
-        """
-        data = str(data)
-        return json.loads(data) if data[0] == '{' else msgpack.loads(data)
-
     def _conn_message(self, data):
         try:
-            self._close_if(self._dispatch_message(self._ns_set.unserialize(self._guess_type(data), True)))
+            self._close_if(self._dispatch_message(self._ns_set.from_representation(get_serializer(self.serializer).loads(data), True)))
         except (ValueError, UnpackException, Message.Error) as error:
             if self.strict:
                 if isinstance(error, Message.Error):
