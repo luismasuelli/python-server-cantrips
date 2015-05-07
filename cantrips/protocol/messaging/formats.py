@@ -1,5 +1,6 @@
 from future.utils import PY3
 from cantrips.features import Feature
+from collections import namedtuple
 import json
 
 
@@ -37,6 +38,16 @@ def join_command(namespace, code):
         return ((namespace & _32bits) << 32) | code & _32bits
     else:
         raise TypeError('`join_command(namespace, code)` expects either two strings or two integer numbers')
+
+
+CommandSpec = namedtuple('CommandSpec', ['string', 'integer'])
+CommandSpec.__doc__ = """
+This class will be used to instantiate each namespace and code (they, together, conform a command),
+  which can be specified by integer or by string (regardless the output format, either msgpack or json).
+"""
+
+FORMAT_STRING = 0
+FORMAT_INTEGER = 1
 
 
 class MsgPackFeature(Feature):

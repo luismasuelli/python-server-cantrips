@@ -1,6 +1,7 @@
 from cantrips.iteration import items
 from cantrips.patterns.identify import List
 from cantrips.patterns.actions import AccessControlledAction
+from cantrips.protocol.messaging.formats import CommandSpec
 from cantrips.protocol.traits.user.base import UserBroadcast
 from cantrips.protocol.traits.provider import IProtocolProvider
 from cantrips.protocol.traits.decorators.authcheck import IAuthCheck, IAuthHandle
@@ -73,64 +74,67 @@ class UserMasterBroadcast(UserBroadcast, IProtocolProvider, IAuthHandle):
     This broadcast creates a user - it supports login features.
     """
 
-    AUTHENTICATE_NS = 'auth'
-    AUTHENTICATE_CODE_LOGIN = 'login'
-    AUTHENTICATE_CODE_LOGOUT = 'logout'
-    AUTHENTICATE_CODE_FORCED_LOGOUT = 'forced-logout'
+    AUTHENTICATE_NS = CommandSpec('auth', 0x00000001)
+    AUTHENTICATE_CODE_LOGIN = CommandSpec('login', 0x00000001)
+    AUTHENTICATE_CODE_LOGOUT = CommandSpec('logout', 0x00000002)
+    AUTHENTICATE_CODE_FORCED_LOGOUT = CommandSpec('forced-logout', 0x00010001)
 
-    AUTHENTICATE_RESPONSE_NS = 'notify'
-    AUTHENTICATE_RESPONSE_CODE_RESPONSE = 'response'
+    AUTHENTICATE_RESPONSE_NS = CommandSpec('notify', 0x80000001)
+    AUTHENTICATE_RESPONSE_CODE_RESPONSE = CommandSpec('response', 0x00000001)
 
-    AUTHENTICATE_RESULT_DENY_NO_ACTIVE_SESSION = 'no-active-session'
-    AUTHENTICATE_RESULT_DENY_ALREADY_ACTIVE_SESSION = 'already-active-session'
-    AUTHENTICATE_RESULT_DENY_INVALID = 'invalid-login'
-    AUTHENTICATE_RESULT_ALLOW_LOGGED_IN = 'logged-in'
-    AUTHENTICATE_RESULT_ALLOW_LOGGED_OUT = 'logged-out'
+    AUTHENTICATE_RESULT_DENY_NO_ACTIVE_SESSION = CommandSpec('no-active-session', 0x00010001)
+    AUTHENTICATE_RESULT_DENY_ALREADY_ACTIVE_SESSION = CommandSpec('already-active-session', 0x00010002)
+    AUTHENTICATE_RESULT_DENY_INVALID = CommandSpec('invalid-login', 0x00010003)
+    AUTHENTICATE_RESULT_ALLOW_LOGGED_IN = CommandSpec('logged-in', 0x00000001)
+    AUTHENTICATE_RESULT_ALLOW_LOGGED_OUT = CommandSpec('logged-out', 0x00000002)
 
-    CHANNEL_NS = 'channel'
-    CHANNEL_CODE_CREATE = 'create'
-    CHANNEL_CODE_CLOSE = 'close'
+    CHANNEL_NS = CommandSpec('channel', 0x00000002)
+    CHANNEL_CODE_CREATE = CommandSpec('create', 0x00000001)
+    CHANNEL_CODE_CLOSE = CommandSpec('close', 0x00000002)
 
-    CHANNEL_RESPONSE_NS = 'notify'
-    CHANNEL_RESPONSE_CODE_RESPONSE = 'response'
+    CHANNEL_RESPONSE_NS = CommandSpec('notify', 0x80000001)
+    CHANNEL_RESPONSE_CODE_RESPONSE = CommandSpec('response', 0x00000001)
 
-    CHANNEL_RESULT_DENY_CREATE = 'cannot-create-channel'
-    CHANNEL_RESULT_DENY_CLOSE = 'cannot-close-channel'
-    CHANNEL_RESULT_DENY_UNEXISTENT = 'unexistent-channel'
-    CHANNEL_RESULT_DENY_EXISTENT = 'already-existent'
+    CHANNEL_RESULT_DENY_CREATE = CommandSpec('cannot-create-channel', 0x00010001)
+    CHANNEL_RESULT_DENY_CLOSE = CommandSpec('cannot-close-channel', 0x00010002)
+    CHANNEL_RESULT_DENY_UNEXISTENT = CommandSpec('unexistent-channel', 0x00010003)
+    CHANNEL_RESULT_DENY_EXISTENT = CommandSpec('already-existent', 0x00010004)
+
+    SPECIAL_SLAVE_UNREGISTER = CommandSpec('slave-unregister', 0x00010001)
+    SPECIAL_USER_UNREGISTER = CommandSpec('user-unregister', 0x00010002)
 
     MASTER_TRAIT = True
 
     @classmethod
     def specification(cls):
         return {
-            cls.AUTHENTICATE_NS: {
-                cls.AUTHENTICATE_CODE_LOGIN: 'server',
-                cls.AUTHENTICATE_CODE_LOGOUT: 'server',
-                cls.AUTHENTICATE_CODE_FORCED_LOGOUT: 'client'
+            cls.formatted('AUTHENTICATE_NS'): {
+                cls.formatted('AUTHENTICATE_CODE_LOGIN'): 'server',
+                cls.formatted('AUTHENTICATE_CODE_LOGOUT'): 'server',
+                cls.formatted('AUTHENTICATE_CODE_FORCED_LOGOUT'): 'client'
             },
-            cls.AUTHENTICATE_RESPONSE_NS: {
-                cls.AUTHENTICATE_RESPONSE_CODE_RESPONSE: 'client'
+            cls.formatted('AUTHENTICATE_RESPONSE_NS'): {
+                cls.formatted('AUTHENTICATE_RESPONSE_CODE_RESPONSE'): 'client'
             },
-            cls.CHANNEL_NS: {
-                cls.CHANNEL_CODE_CREATE: 'server',
-                cls.CHANNEL_CODE_CLOSE: 'server',
+            cls.formatted('CHANNEL_NS'): {
+                cls.formatted('CHANNEL_CODE_CREATE'): 'server',
+                cls.formatted('CHANNEL_CODE_CLOSE'): 'server',
             },
-            cls.CHANNEL_RESPONSE_NS: {
-                cls.CHANNEL_RESPONSE_CODE_RESPONSE: 'client'
+            cls.formatted('CHANNEL_RESPONSE_NS'): {
+                cls.formatted('CHANNEL_RESPONSE_CODE_RESPONSE'): 'client'
             }
         }
 
     @classmethod
     def specification_handlers(cls, master_instance):
         return {
-            cls.AUTHENTICATE_NS: {
-                cls.AUTHENTICATE_CODE_LOGIN: lambda socket, message: cls.route(master_instance, message, socket).command_login(*message.args, **message.kwargs),
-                cls.AUTHENTICATE_CODE_LOGOUT: lambda socket, message: cls.route(master_instance, message, socket).command_logout(*message.args, **message.kwargs),
+            cls.formatted('AUTHENTICATE_NS'): {
+                cls.formatted('AUTHENTICATE_CODE_LOGIN'): lambda socket, message: cls.route(master_instance, message, socket).command_login(*message.args, **message.kwargs),
+                cls.formatted('AUTHENTICATE_CODE_LOGOUT'): lambda socket, message: cls.route(master_instance, message, socket).command_logout(*message.args, **message.kwargs),
             },
-            cls.CHANNEL_NS: {
-                cls.CHANNEL_CODE_CREATE: lambda socket, message: cls.route(master_instance, message, socket).command_create_slave(message.args[0], *message.args[1:], **message.kwargs),
-                cls.CHANNEL_CODE_CLOSE: lambda socket, message: cls.route(master_instance, message, socket).command_close_slave(message.args[0], *message.args[1:], **message.kwargs),
+            cls.formatted('CHANNEL_NS'): {
+                cls.formatted('CHANNEL_CODE_CREATE'): lambda socket, message: cls.route(master_instance, message, socket).command_create_slave(message.args[0], *message.args[1:], **message.kwargs),
+                cls.formatted('CHANNEL_CODE_CLOSE'): lambda socket, message: cls.route(master_instance, message, socket).command_close_slave(message.args[0], *message.args[1:], **message.kwargs),
             },
         }
 
@@ -142,11 +146,11 @@ class UserMasterBroadcast(UserBroadcast, IProtocolProvider, IAuthHandle):
 
         def unregister_slave(list, instance, by_val):
             for ukey, user in instance.users():
-                instance.force_part(user, special="slave-unregister")
+                instance.force_part(user, special=self.formatted('SPECIAL_SLAVE_UNREGISTER'))
 
         def unregister_user(list, instance, by_val):
             for skey, slave in items(instance.slaves()):
-                slave.force_part(instance, special="user-unregister")
+                slave.force_part(instance, special=self.formatted('SPECIAL_USER_UNREGISTER'))
 
         self.slaves.events.remove.register(unregister_slave)
         self.list.events.remove.register(unregister_user)
@@ -182,12 +186,12 @@ class UserMasterBroadcast(UserBroadcast, IProtocolProvider, IAuthHandle):
         result = None
 
         if state and not user_in:
-            result = self._result_deny(self.AUTHENTICATE_RESULT_DENY_NO_ACTIVE_SESSION)
+            result = self._result_deny(self.formatted('AUTHENTICATE_RESULT_DENY_NO_ACTIVE_SESSION'))
         elif not state and user_in:
-            result = self._result_deny(self.AUTHENTICATE_RESULT_DENY_ALREADY_ACTIVE_SESSION)
+            result = self._result_deny(self.formatted('AUTHENTICATE_RESULT_DENY_ALREADY_ACTIVE_SESSION'))
 
         if result:
-            socket.send_message(self.AUTHENTICATE_RESPONSE_NS, self.AUTHENTICATE_RESPONSE_CODE_RESPONSE, result=result)
+            socket.send_message(self.formatted('AUTHENTICATE_RESPONSE_NS'), self.formatted('AUTHENTICATE_RESPONSE_CODE_RESPONSE'), result=result)
             return False
         return True
 
@@ -221,7 +225,7 @@ class UserMasterBroadcast(UserBroadcast, IProtocolProvider, IAuthHandle):
         """
         if user in self.users():
             self.unregister(self.users()[user], *args, **kwargs)
-            user.socket.send_message(self.AUTHENTICATE_NS, self.AUTHENTICATE_CODE_FORCED_LOGOUT, *args, **kwargs)
+            user.socket.send_message(self.formatted('AUTHENTICATE_NS'), self.formatted('AUTHENTICATE_CODE_FORCED_LOGOUT'), *args, **kwargs)
             return True
         else:
             return False
@@ -277,45 +281,45 @@ class UserMasterBroadcast(UserBroadcast, IProtocolProvider, IAuthHandle):
         """
         States whether the user is allowed to create the slave.
         """
-        return self._result_deny(self.CHANNEL_RESULT_DENY_CREATE)
+        return self._result_deny(self.formatted('CHANNEL_RESULT_DENY_CREATE'))
 
     def _command_accepted_create_slave(self, result, socket, slave_name, *args, **kwargs):
         """
         Handles when the slave creation succeeds.
         """
         self.slave_register(slave_name, *args, **kwargs)
-        socket.send_message(self.CHANNEL_RESPONSE_NS, self.CHANNEL_RESPONSE_CODE_RESPONSE, result=result, channel=slave_name)
+        socket.send_message(self.formatted('CHANNEL_RESPONSE_NS'), self.formatted('CHANNEL_RESPONSE_CODE_RESPONSE'), result=result, channel=slave_name)
 
     def _command_rejected_create_slave(self, result, socket, slave_name, *args, **kwargs):
         """
         Handles when the slave creation fails.
         """
-        socket.send_message(self.CHANNEL_RESPONSE_NS, self.CHANNEL_RESPONSE_CODE_RESPONSE, result=result, channel=slave_name)
+        socket.send_message(self.formatted('CHANNEL_RESPONSE_NS'), self.formatted('CHANNEL_RESPONSE_CODE_RESPONSE'), result=result, channel=slave_name)
 
     def _command_is_allowed_close_slave(self, socket, slave_name, *args, **kwargs):
         """
         States whether the user is allowed to close the slave.
         """
-        return self._result_deny(self.CHANNEL_RESULT_DENY_CLOSE)
+        return self._result_deny(self.formatted('CHANNEL_RESULT_DENY_CLOSE'))
 
     def _command_accepted_close_slave(self, result, socket, slave_name, *args, **kwargs):
         """
         Handles when the slave closure succeeds.
         """
         self.slave_unregister(slave_name, *args, **kwargs)
-        socket.send_message(self.CHANNEL_RESPONSE_NS, self.CHANNEL_RESPONSE_CODE_RESPONSE, result=result, channel=slave_name)
+        socket.send_message(self.formatted('CHANNEL_RESPONSE_NS'), self.formatted('CHANNEL_RESPONSE_CODE_RESPONSE'), result=result, channel=slave_name)
 
     def _command_rejected_close_slave(self, result, socket, slave_name, *args, **kwargs):
         """
         Handles when the slave closure fails.
         """
-        socket.send_message(self.CHANNEL_RESPONSE_NS, self.CHANNEL_RESPONSE_CODE_RESPONSE, result=result, channel=slave_name)
+        socket.send_message(self.formatted('CHANNEL_RESPONSE_NS'), self.formatted('CHANNEL_RESPONSE_CODE_RESPONSE'), result=result, channel=slave_name)
 
     def _command_is_allowed_login(self, socket, *args, **kwargs):
         """
         Checks whether a user must be allowed, or not, to log-in (e.g. bad user/password).
         """
-        return self._command_login_impl(socket, *args, **kwargs) or self._result_deny(self.AUTHENTICATE_RESULT_DENY_INVALID)
+        return self._command_login_impl(socket, *args, **kwargs) or self._result_deny(self.formatted('AUTHENTICATE_RESULT_DENY_INVALID'))
 
     def _command_accepted_login(self, result, socket, *args, **kwargs):
         """
@@ -323,19 +327,19 @@ class UserMasterBroadcast(UserBroadcast, IProtocolProvider, IAuthHandle):
         """
         user_key, user_args, user_kwargs = result
         self.auth_set(socket, end_point=self.register(user_key, *user_args, **user_kwargs))
-        socket.send_message(self.AUTHENTICATE_RESPONSE_NS, self.AUTHENTICATE_RESPONSE_CODE_RESPONSE, result=result)
+        socket.send_message(self.formatted('AUTHENTICATE_RESPONSE_NS'), self.formatted('AUTHENTICATE_RESPONSE_CODE_RESPONSE'), result=result)
 
     def _command_rejected_login(self, result, socket, *args, **kwargs):
         """
         Rejects the login attempt with the gotten result.
         """
-        socket.send_message(self.AUTHENTICATE_RESPONSE_NS, self.AUTHENTICATE_RESPONSE_CODE_RESPONSE, result=result)
+        socket.send_message(self.formatted('AUTHENTICATE_RESPONSE_NS'), self.formatted('AUTHENTICATE_RESPONSE_CODE_RESPONSE'), result=result)
 
     def _command_is_allowed_logout(self, socket, *args, **kwargs):
         """
         Checks whether the socket should be allowed to logout.
         """
-        return self._result_allow(self.AUTHENTICATE_RESULT_ALLOW_LOGGED_OUT)
+        return self._result_allow(self.formatted('AUTHENTICATE_RESULT_ALLOW_LOGGED_OUT'))
 
     def _command_accepted_logout(self, result, socket, *args, **kwargs):
         """
@@ -343,13 +347,13 @@ class UserMasterBroadcast(UserBroadcast, IProtocolProvider, IAuthHandle):
         """
         self.unregister(socket.user_endpoint, *args, **kwargs)
         self.auth_clear(socket)
-        socket.send_message(self.AUTHENTICATE_RESPONSE_NS, self.AUTHENTICATE_RESPONSE_CODE_RESPONSE, result=result)
+        socket.send_message(self.formatted('AUTHENTICATE_RESPONSE_NS'), self.formatted('AUTHENTICATE_RESPONSE_CODE_RESPONSE'), result=result)
 
     def _command_rejected_logout(self, result, socket, *args, **kwargs):
         """
         Rejects the logout command, and cleans the user_endpoint (perhaps an expired session exists).
         """
-        socket.send_message(self.AUTHENTICATE_RESPONSE_NS, self.AUTHENTICATE_RESPONSE_CODE_RESPONSE, result=result)
+        socket.send_message(self.formatted('AUTHENTICATE_RESPONSE_NS'), self.formatted('AUTHENTICATE_RESPONSE_CODE_RESPONSE'), result=result)
 
     #################################################################
     # Funciones auxiliares de comando (no lo resuelven por si mismas)
@@ -386,4 +390,5 @@ class UserMasterBroadcast(UserBroadcast, IProtocolProvider, IAuthHandle):
         :param channel:
         :return:
         """
-        socket.send_message(self.CHANNEL_RESPONSE_NS, self.CHANNEL_RESPONSE_CODE_RESPONSE, self._result_deny(self.CHANNEL_RESULT_DENY_UNEXISTENT))
+        socket.send_message(self.formatted('CHANNEL_RESPONSE_NS'), self.formatted('CHANNEL_RESPONSE_CODE_RESPONSE'),
+                            self._result_deny(self.formatted('CHANNEL_RESULT_DENY_UNEXISTENT')))

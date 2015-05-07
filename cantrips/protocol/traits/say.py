@@ -1,5 +1,6 @@
 from cantrips.patterns.actions import AccessControlledAction
 from cantrips.patterns.broadcast import IBroadcast
+from cantrips.protocol.messaging.formats import CommandSpec
 from cantrips.protocol.traits.decorators.authcheck import IAuthCheck
 from cantrips.protocol.traits.decorators.incheck import IInCheck
 from cantrips.protocol.traits.permcheck import PermCheck
@@ -12,32 +13,32 @@ class SayBroadcast(IBroadcast, PermCheck, IProtocolProvider, IAuthCheck, IInChec
       to publish messages to the whole broadcast.
     """
 
-    SAY_NS = 'say'
-    SAY_CODE_SAY = 'say'
-    SAY_CODE_SAID = 'said'
+    SAY_NS = CommandSpec('say', 0x00000011)
+    SAY_CODE_SAY = CommandSpec('say', 0x00000001)
+    SAY_CODE_SAID = CommandSpec('said', 0x00010001)
 
-    SAY_RESPONSE_NS = 'notify'
-    SAY_RESPONSE_CODE_RESPONSE = 'response'
+    SAY_RESPONSE_NS = CommandSpec('notify', 0x80000001)
+    SAY_RESPONSE_CODE_RESPONSE = CommandSpec('response', 0x00000001)
 
-    SAY_RESULT_ALLOW = 'ok'
+    SAY_RESULT_ALLOW = CommandSpec('ok', 0x00000001)
 
     @classmethod
     def specification(cls):
         return {
-            cls.SAY_NS: {
-                cls.SAY_CODE_SAY: 'server',
-                cls.SAY_CODE_SAID: 'client'
+            cls.formatted('SAY_NS'): {
+                cls.formatted('SAY_CODE_SAY'): 'server',
+                cls.formatted('SAY_CODE_SAID'): 'client'
             },
-            cls.SAY_RESPONSE_NS: {
-                cls.SAY_RESPONSE_CODE_RESPONSE: 'client'
+            cls.formatted('SAY_RESPONSE_NS'): {
+                cls.formatted('SAY_RESPONSE_CODE_RESPONSE'): 'client'
             }
         }
 
     @classmethod
     def specification_handlers(cls, master_instance):
         return {
-            cls.SAY_NS: {
-                cls.SAY_CODE_SAY: lambda socket, message: cls.route(master_instance, message, socket).command_say(message.message),
+            cls.formatted('SAY_NS'): {
+                cls.formatted('SAY_CODE_SAY'): lambda socket, message: cls.route(master_instance, message, socket).command_say(message.message),
             },
         }
 
@@ -59,18 +60,18 @@ class SayBroadcast(IBroadcast, PermCheck, IProtocolProvider, IAuthCheck, IInChec
 
         Primitive check - allow only connected users.
         """
-        return self._result_allow(self.SAY_RESULT_ALLOW)
+        return self._result_allow(self.formatted('SAY_RESULT_ALLOW'))
 
     def _command_accepted_say(self, result, socket, message):
         """
         User message was accepted. Notify the user AND broadcast the message to other users.
         """
-        socket.send_message(self.SAY_RESPONSE_NS, self.SAY_RESPONSE_CODE_RESPONSE, result=result, message=message)
+        socket.send_message(self.formatted('SAY_RESPONSE_NS'), self.formatted('SAY_RESPONSE_CODE_RESPONSE'), result=result, message=message)
         others = IBroadcast.BROADCAST_FILTER_OTHERS(self.users()[self.auth_get(socket)])
-        self.broadcast((self.SAY_NS, self.SAY_CODE_SAID), user=self.auth_get(socket).key, message=message, filter=others)
+        self.broadcast((self.formatted('SAY_NS'), self.formatted('SAY_CODE_SAID')), user=self.auth_get(socket).key, message=message, filter=others)
 
     def _command_rejected_say(self, result, socket, message):
         """
         User message was rejected.
         """
-        socket.send_message(self.SAY_RESPONSE_NS, self.SAY_RESPONSE_CODE_RESPONSE, result=result, message=message)
+        socket.send_message(self.formatted('SAY_RESPONSE_NS'), self.formatted('SAY_RESPONSE_CODE_RESPONSE'), result=result, message=message)

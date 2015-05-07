@@ -1,7 +1,8 @@
 from cantrips.iteration import items
+from cantrips.protocol.traits.formatteable import IFormatteable
 
 
-class IProtocolProvider(object):
+class IProtocolProvider(IFormatteable):
     """
     Must implement a method returning the chunk of protocol
       operations to implement. It is intended that broadcast
@@ -12,7 +13,9 @@ class IProtocolProvider(object):
     @classmethod
     def specification(cls):
         """
-        Should return dict {ns => {code: direction}}
+        Should return dict {ns => {code: direction}}. ns and code should be either both strings or
+          either both integers. When being declared, cantrips.protocol.messaging.formats.CommandSpec
+          should be used, considering the cls.COMMAND_FORMAT value (see the formatted(prop) method).
         """
 
         raise NotImplementedError

@@ -1,22 +1,29 @@
-class PermCheck(object):
+from cantrips.protocol.traits.formatteable import IFormatteable
+from cantrips.protocol.messaging.formats import CommandSpec
+
+
+class PermCheck(IFormatteable):
     """
     A default implementation and helpers for `accepts(result)` method
       for the AccessControlledAction user classes.
     """
 
+    ALLOW = CommandSpec('allow', 0x00000001)
+    DENY = CommandSpec('deny', 0x00000002)
+
     def _accepts(self, result):
-        return 'allow' in result
+        return self.formatted('ALLOW') in result
 
     def _result_allow(self, reason):
         """
         A result created with this method will be allowed by _accepts(result)
           in this class.
         """
-        return {'allow': reason}
+        return {self.formatted('ALLOW'): reason}
 
     def _result_deny(self, reason):
         """
         A result created with this method will be denied by _accepts(result)
           in this class.
         """
-        return {'deny': reason}
+        return {self.formatted('DENY'): reason}
