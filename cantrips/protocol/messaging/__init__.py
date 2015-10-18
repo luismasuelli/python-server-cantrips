@@ -1,11 +1,9 @@
-import msgpack
 import logging
 from cantrips.types.exception import factory
 from cantrips.types.arguments import Arguments
 from cantrips.iteration import items
-from msgpack.exceptions import UnpackException
-from cantrips.protocol.messaging.formats import split_command, join_command, integer, string, get_serializer
-
+from cantrips.protocol.messaging.formats import split_command, join_command, integer, string, get_serializer, \
+    get_serializer_exceptions
 
 logger = logging.getLogger("cantrips.message.processor")
 
@@ -211,7 +209,7 @@ class MessageNamespaceSet(object):
 
 class MessageProcessor(object):
 
-    def __init__(self, strict=False):
+    def __init__(self, strict=False, serializer='json'):
         """
         Initializes the protocol, stating whether, upon
           the invalid messages can be processed by the
@@ -223,7 +221,7 @@ class MessageProcessor(object):
           `serializer` ('msgpack' => msgpack, 'json' => json).
         """
 
-        self.serializer = True
+        self.serializer = serializer
         self.strict = strict
         self._setup_ns()
 
@@ -357,9 +355,10 @@ class MessageProcessor(object):
             self._close_unknown(e)
 
     def _conn_message(self, data):
+        exceptions = get_serializer_exceptions(self.serializer) + (Message.Error,)
         try:
             self._close_if(self._dispatch_message(self._ns_set.from_representation(get_serializer(self.serializer).loads(data), True)))
-        except (ValueError, UnpackException, Message.Error) as error:
+        except exceptions as error:
             if self.strict:
                 if isinstance(error, Message.Error):
                     if getattr(error, 'code', False) == "messaging:message:invalid":

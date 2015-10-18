@@ -58,7 +58,8 @@ class MsgPackFeature(Feature):
         Imports msgpack library.
         """
         import msgpack
-        return msgpack
+        import msgpack.exceptions
+        return msgpack, msgpack.exceptions.UnpackException
 
     @classmethod
     def _import_error_message(cls):
@@ -75,6 +76,18 @@ def get_serializer(serializer_type):
     if serializer_type == 'json':
         return json
     elif serializer_type == 'msgpack':
-        return MsgPackFeature.import_it()
+        return MsgPackFeature.import_it()[0]
+    else:
+        raise ValueError('Unexpected serializer type: %s' % serializer_type)
+
+
+def get_serializer_exceptions(serializer_type):
+    """
+    Gets an appropiate set of serializer exceptions based on the specified type.
+    """
+    if serializer_type == 'json':
+        return TypeError, ValueError
+    elif serializer_type == 'msgpack':
+        return MsgPackFeature.import_it()[1],
     else:
         raise ValueError('Unexpected serializer type: %s' % serializer_type)
