@@ -1,13 +1,9 @@
 try:
     from autobahn.twisted.websocket import WebSocketServerProtocol
 except:
-    raise ImportError("You need to install twisted "
-                      "(pip install twisted==14.0.2), "
-                      "AND Autobahn for Python "
-                      "(pip install autobahn), "
-                      "for this to work. As an alternative, "
-                      "you can install both Autobahn and Twisted"
-                      "by executing: pip install autobahn[twisted]")
+    raise ImportError("You need to install twisted (pip install twisted==14.0.2) AND Autobahn for Python "
+                      "(pip install autobahn) for this to work. As an alternative, you can install both Autobahn "
+                      "and Twisted by executing: pip install autobahn[twisted]")
 from cantrips.protocol.messaging import MessageProcessor
 from future.utils import istext
 
@@ -32,7 +28,7 @@ class MessageProtocol(WebSocketServerProtocol, MessageProcessor):
         try:
             return payload if isBinary else payload.decode('utf8')
         except UnicodeDecodeError:
-            self.transport.loseConnection()
+            self._close_invalid_format(payload)
 
     def _conn_close(self, code, reason=''):
         return self.failConnection(code, reason)
