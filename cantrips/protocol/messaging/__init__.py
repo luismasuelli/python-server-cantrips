@@ -209,6 +209,15 @@ class MessageNamespaceSet(object):
 
 class MessageProcessor(object):
 
+    class CloseConnection(Exception):
+        """
+        This exception is intended as a signal used to close
+          the connection inside a handler. It is not an exception
+          to be logged or treated in a normal way like critical
+          ones.
+        """
+        pass
+
     def __init__(self, strict=False, serializer='json'):
         """
         Initializes the protocol, stating whether, upon
@@ -228,10 +237,10 @@ class MessageProcessor(object):
     @classmethod
     def _setup_ns(cls):
         if not hasattr(cls, '_ns_set'):
-            cls._ns_set = MessageNamespaceSet(cls.setup())
+            cls._ns_set = MessageNamespaceSet(cls._protocol_config())
 
     @classmethod
-    def setup(cls):
+    def _protocol_config(cls):
         """
         Specifies the protocol messages to be delivered and
           received. This function must return a dictionary
@@ -241,18 +250,12 @@ class MessageProcessor(object):
         Namespaces and codes may be strings or 32-bit integers.
 
         Where direction may be:
-          MessageFactory.DIRECTION_SERVER : this message can go to the server
-          MessageFactory.DIRECTION_CLIENT : this message can go to the client
-          MessageFactory.DIRECTION_BOTH : this message can go in both directions
+          "server" : this message can go to the server
+          "client" : this message can go to the client
+          "both" : this message can go in both directions
         """
 
         return {}
-
-    def _conn_close(self, code, reason=''):
-        raise NotImplementedError
-
-    def _conn_send(self, data):
-        raise NotImplementedError
 
     def terminate(self):
         """
@@ -262,12 +265,10 @@ class MessageProcessor(object):
         """
 
         try:
-            self.goodbye()
-        except Message.Error as e:
-            self._close_protocol_violation(e.parts)
+            self._on_goodbye()
+            self._conn_close(1000)
         except Exception as e:
-            self._close_unknown(e)
-        self._conn_close(1000)
+            self._unknown_exception(e, 'terminate')
 
     def send_message(self, ns, code, *args, **kwargs):
         """
@@ -290,87 +291,192 @@ class MessageProcessor(object):
 
         return {}
 
-    def _dispatch_message(self, message):
-        """
-        Processes a message by running a specific behavior. If
-          this function returns a True-evaluable value, the
-          connection is closed.
-        """
-        ns, code = split_command(message.code)
-        h = self._handlers().get(ns, {}).get(code, lambda socket, message: None)
-        return h(self, message)
-
-    def invalid_message(self, error):
+    def _on_invalid_message(self, error):
         """
         Processes an exception by running certain behavior. It is
           the same as processing a normal message: If this function
-          returns a True-evaluable value, the connection is closed.
+          raises self.CloseConnection, the connection will be closed.
         """
 
-        return True
+    def _on_unknown_exception(self, error, context):
+        """
+        Processes an unknown exception, not necessarily related to the
+          client message parting. If this function raises self.CloseConnection
+          the connection will be closed.
 
-    def hello(self):
+        :param error: Exception being attended.
+        :param context: A description of the moment where this error has been triggered.
+        """
+
+    def _on_hello(self):
         """
         Processes an on-connection behavior. It is completely safe to
-          send messages to the other endpoint.
+          send messages to the other endpoint. If self.CloseConnection
+          is triggered here, the connection will be gracefully closed.
         """
 
-        pass
-
-    def goodbye(self):
+    def _on_goodbye(self):
         """
         Processes an on-disconnection behavior. It is completely safe to
           send messages to the other endpoint, since the closing reason is
           not the client already closed the connection, but a protocol error
-          or an agreed connection-close command.
+          or an agreed connection-close command. No exception should be
+          triggered here.
+
+        It is recommended that totally safe code is implemented here.
         """
 
-        pass
+    def _on_forceful_close(self, code, reason):
+        """
+        Pre-process a forceful close. No exception should be triggered here.
+        It is recommended that totally safe code is implemented here.
+
+        :param code: A standard integer code of the reason (specially for websockets).
+        :param reason: A string description of the reason.
+        """
+
+    #########################################################################
+    ######################## Implementation details here ####################
+    # Stuff here is not intended to be overridden by the users / inheritors #
+    #########################################################################
+    #########################################################################
+
+    # Connection template functions
+
+    def _conn_close(self, code, reason=''):
+        raise NotImplementedError
+
+    def _conn_send(self, data):
+        raise NotImplementedError
+
+    # Strict / forceful close functions.
+
+    def _forceful_close(self, code, reason):
+        """
+        Forcefully closes a connection.
+
+        :param code: A standard integer code of the reason (specially for websockets).
+        :param reason: A string description of the reason.
+        """
+
+        self._on_forceful_close(code, reason)
+        self._conn_close(code, reason)
 
     def _close_invalid_format(self, parts):
         logger.debug("Message format error for: " + repr(parts))
-        #Cuando se apruebe el draft, 1003 sera usado para el formato de los datos.
-        self._conn_close(3003, "Message format error")
+        # Cuando se apruebe el draft, 1003 sera usado para el formato de los datos.
+        self._forceful_close(3003, "Message format error")
 
     def _close_protocol_violation(self, parts):
         logger.debug("Unexistent or unavailable message: " + repr(parts))
-        #Cuando se apruebe el draft, 1002 sera para mensaje no disponible o violacion de protocolo
-        self._conn_close(3002, "Unexistent or unavailable message")
+        # Cuando se apruebe el draft, 1002 sera para mensaje no disponible o violacion de protocolo
+        self._forceful_close(3002, "Unexistent or unavailable message")
 
-    def _close_unknown(self, exception):
-        logger.debug("Cannot fullfill request: Exception triggered: %s - %s" % (type(exception).__name__, str(exception)))
-        #Cuando se apruebe el draft, 1011 sera para notificar que la peticion no pudo realizarse
-        self._conn_close(3011, "Cannot fullfill request: Internal server error")
+    def _close_unknown(self, error):
+        logger.debug("Cannot fullfill request: Exception triggered: %s - %s" % (type(error).__name__, str(error)))
+        # Cuando se apruebe el draft, 1011 sera para notificar que la peticion no pudo realizarse
+        self._forceful_close(3011, "Cannot fullfill request: Internal server error")
 
-    def _close_if(self, result):
-        if result:
-            self.terminate()
+    def _unknown_exception(self, error, context):
+        """
+        Processes an unkown exception.
+
+        If this handler is set as strict, the connection is *forcefully* handled.
+        Otherwise it is handled by .unknown_exception().
+        """
+
+        if self.strict:
+            self._close_unknown(error)
+        else:
+            self._on_unknown_exception(error, context)
 
     def _conn_made(self):
+        """
+        Processes the event when a connection is created (i.e. this connection is opened).
+          It invokes .hello() (no args).
+
+        If .hello() raises an error, it is told that to the other end. If the error
+          triggered is self.CloseConnection, the connection will be gracefully terminated.
+          A use case for this is an echo server.
+        """
+
         try:
-            self.hello()
-        except Message.Error as e:
-            self._close_protocol_violation(e.parts)
+            self._on_hello()
+        except self.CloseConnection:
+            self.terminate()
         except Exception as e:
-            self._close_unknown(e)
+            self._unknown_exception(e, '_conn_made')
+
+    def _serializer_exceptions(self):
+        """
+        Returns the exceptions to be captured on message parsing.
+
+        :return: Tuple of Exception subclasses.
+        """
+
+        return get_serializer_exceptions(self.serializer) + (Message.Error,)
+
+    def _parse_client_message(self, data):
+        """
+        Using the current namespaces set, parses a client message as received by the socket.
+        The message must be well-formed, with no extra data at all (neither leading nor trailing).
+
+        :param data: raw data to be parsed (as received by the socket).
+        :returns: A Message instance.
+        :raises: Message.Error if data is of wrong format (other errors like ValueError, TypeError, and msgpack
+          errors can also be triggered).
+        """
+
+        return self._ns_set.from_representation(get_serializer(self.serializer).loads(data), True)
+
+    def _process_serializer_exception(self, error):
+        """
+        Processes the case when an error occurred serializing a client message.
+        It will either *forcefully* close the connection (by invalid format or protocol violation),
+          or attend the case when an invalid message should be processed. This depends on the value
+          of the `strict` attribute.
+
+        :param error: An exception that has occurred.
+        """
+
+        if self.strict:
+            if isinstance(error, Message.Error):
+                if getattr(error, 'code', False) == "messaging:message:invalid":
+                    self._close_invalid_format(error.parts)
+                else:
+                    self._close_protocol_violation(error.parts)
+            else:
+                self._close_invalid_format(error.value)
+        else:
+            self._on_invalid_message(error)
+
+    def _dispatch_message(self, message):
+        """
+        Processes a message by running a specific behavior. If this function raises
+          self.CloseConnection, the connection is gracefully closed.
+
+        :param message: A parsed message being processed.
+        """
+
+        ns, code = split_command(message.code)
+        h = self._handlers().get(ns, {}).get(code, lambda socket, message: None)
+        h(self, message)
 
     def _conn_message(self, data):
-        exceptions = get_serializer_exceptions(self.serializer) + (Message.Error,)
+        """
+        Processes a client message. It will parse it and dispatch it.
+        Message dispatching could gracefully close a connection if it is told to do so in a handler.
+        If an exception occurs when serializing a message, or another unexpected exception occurs
+          when processing a message, such scenarios can also be handled.
+
+        :param data: Data being parsed.
+        """
+
         try:
-            self._close_if(self._dispatch_message(self._ns_set.from_representation(get_serializer(self.serializer).loads(data), True)))
-        except exceptions as error:
-            if self.strict:
-                if isinstance(error, Message.Error):
-                    if getattr(error, 'code', False) == "messaging:message:invalid":
-                        self._close_invalid_format(error.parts)
-                    else:
-                        self._close_protocol_violation(error.parts)
-                else:
-                    self._close_invalid_format(error.value)
-            else:
-                self._close_if(self.invalid_message(error))
+            self._dispatch_message(self._parse_client_message(data))
+        except self.CloseConnection:
+            self.terminate()
+        except self._serializer_exceptions() as error:
+            self._process_serializer_exception(error)
         except Exception as error:
-            if self.strict:
-                self._close_unknown(error)
-            else:
-                self._close_if(self.invalid_message(error))
+            self._unknown_exception(error, '_conn_message')
