@@ -1,6 +1,7 @@
 from future.utils import PY3
 from cantrips.features import Feature
 from collections import namedtuple
+from enum import Enum
 import json
 
 
@@ -13,10 +14,23 @@ integer = (int,) if PY3 else (int, long)
 _32bits = (1 << 32) - 1
 
 
+class Formats(Enum):
+    """
+    Parsing formats for messages. Intended:
+    - 0 -> string -> JSON.
+    - 1 -> integer -> MsgPack.
+    """
+    FORMAT_STRING = 0
+    FORMAT_INTEGER = 1
+
+    def command_value(self, command):
+        return command[self.value]
+
+
 def split_command(command):
     """
     Breaks a command in two parts: namespace and code. Either a string or a 64bit integer
-      are expected (in amd64 architectures, int is 64bit wide, althought in python3, all the
+      are expected (in amd64 architectures, int is 64bit wide, although in python3, all the
       integer numbers are of type int). Bits above the 63rd are ignored (the first is 0th).
     """
     if isinstance(command, string):
@@ -45,9 +59,7 @@ CommandSpec.__doc__ = """
 This class will be used to instantiate each namespace and code (they, together, conform a command),
   which can be specified by integer or by string (regardless the output format, either msgpack or json).
 """
-
-FORMAT_STRING = 0
-FORMAT_INTEGER = 1
+ANY_COMMAND = CommandSpec(0xFFFFFFFF, '__any__')
 
 
 class MsgPackFeature(Feature):
@@ -71,7 +83,7 @@ class MsgPackFeature(Feature):
 
 def get_serializer(serializer_type):
     """
-    Gets an appropiate serializer based on the specified type.
+    Gets an appropriate serializer based on the specified type.
     """
     if serializer_type == 'json':
         return json
@@ -83,7 +95,7 @@ def get_serializer(serializer_type):
 
 def get_serializer_exceptions(serializer_type):
     """
-    Gets an appropiate set of serializer exceptions based on the specified type.
+    Gets an appropriate set of serializer exceptions based on the specified type.
     """
     if serializer_type == 'json':
         return TypeError, ValueError
