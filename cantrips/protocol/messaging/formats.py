@@ -14,7 +14,7 @@ integer = (int,) if PY3 else (int, long)
 _32bits = (1 << 32) - 1
 
 
-class Formats(Enum):
+class Formats(int, Enum):
     """
     Parsing formats for messages. Intended:
     - 0 -> string -> JSON.
