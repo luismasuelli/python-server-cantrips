@@ -1,4 +1,4 @@
-from .formats import ANY_COMMAND
+from cantrips.protocol.messaging.formats import ANY_COMMAND
 
 
 class ProtocolLayer(object):
