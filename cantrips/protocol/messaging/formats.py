@@ -165,12 +165,14 @@ class CommandNamespaceMap(namedtuple('_CommandNamespaceMap', ['translator', 'spe
     def __new__(cls, translator, ns_spec):
         return super(CommandNamespaceMap, cls).__new__(cls, translator, ns_spec, {})
 
-    def add_command(self, key, spec):
+    def add_command(self, spec):
         """
-        Adds a command to the map by its code. ANY_COMMAND / cannot be translated with this method.
+        Adds a command to the map by its code. ANY_COMMAND cannot be translated with this method.
         """
+        if not self.translator:
+            raise ValueError("Cannot add a command to a namespace map without translator")
         _cannot_add_any_or_unknown(spec)
-        self.map[key] = spec
+        self.map[self.translator.format.spec_value(spec)] = spec
         return self
 UNKNOWN_NAMESPACE_MAP = CommandNamespaceMap(None, None)
 
