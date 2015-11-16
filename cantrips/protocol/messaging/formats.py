@@ -199,9 +199,7 @@ class Translator(object):
         :returns: A just-created CommandNamespaceMap instance.
         """
         _cannot_add_any_or_unknown(spec)
-        to_add = CommandNamespaceMap(self, spec)
-        self.__map[self.format.spec_value(spec)] = to_add
-        return to_add
+        return self.__map.setdefault(self.format.spec_value(spec), CommandNamespaceMap(self, spec))
 
     def translate(self, full_command):
         """
