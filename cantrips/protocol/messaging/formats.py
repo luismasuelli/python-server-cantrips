@@ -150,13 +150,11 @@ class CommandSpec(namedtuple('_CommandSpec', _MEMBER_NAMES)):
     def as_keyword(self):
         return self.string
 ANY_COMMAND = CommandSpec(0xFFFFFFFF, '__any__')
-UNKNOWN_COMMAND = CommandSpec(0x00000000, '__unknown__')
 
 
 def _cannot_add_any_or_unknown(command):
-    if command in (ANY_COMMAND, UNKNOWN_COMMAND):
-        raise ValueError('Cannot add to translation neither ANY_COMMAND nor UNKNOWN_COMMAND'
-                         ' as neither namespace or code')
+    if command == ANY_COMMAND:
+        raise ValueError('Cannot add to translation ANY_COMMAND value as neither namespace or code')
 
 
 class CommandNamespaceMap(namedtuple('_CommandNamespaceMap', ['translator', 'spec', 'map'])):
@@ -169,12 +167,12 @@ class CommandNamespaceMap(namedtuple('_CommandNamespaceMap', ['translator', 'spe
 
     def add_command(self, key, spec):
         """
-        Adds a command to the map by its code. ANY_COMMAND / UNKNOWN_COMMAND cannot be translated with this method.
+        Adds a command to the map by its code. ANY_COMMAND / cannot be translated with this method.
         """
         _cannot_add_any_or_unknown(spec)
         self.map[key] = spec
         return self
-UNKNOWN_NAMESPACE_MAP = CommandNamespaceMap(None, UNKNOWN_COMMAND)
+UNKNOWN_NAMESPACE_MAP = CommandNamespaceMap(None, None)
 
 
 class Translator(object):
@@ -194,7 +192,7 @@ class Translator(object):
 
     def add_namespace(self, spec):
         """
-        Adds a new namespace translation. ANY_COMMAND / UNKNOWN_COMMAND cannot be translated with this method.
+        Adds a new namespace translation. ANY_COMMAND cannot be translated with this method.
         :param spec: A CommandSpec instance to add.
         :returns: A just-created CommandNamespaceMap instance.
         """
@@ -205,12 +203,11 @@ class Translator(object):
 
     def translate(self, full_command):
         """
-        Breaks a full command in namespace and code. Values could be UNKNOWN_COMMAND.
-        If the returned code is UNKNOWN_COMMAND, it is enough to see that something went
-          wrong in the received command.
-        :param spec: A raw value, according to the format.
+        Breaks a full command in namespace and code. If either of the command parts is not known, KeyError
+          will be raised.
+        :param full_command: A raw value, according to the format.
         :returns: A tuple with (namespace, code).
         """
         namespace, code = self.format.split(full_command)
         namespace_map = self.__map.get(namespace, UNKNOWN_NAMESPACE_MAP)
-        return namespace_map.spec, namespace_map.map.get(code, UNKNOWN_COMMAND)
+        return namespace_map.spec, namespace_map.map[code]
