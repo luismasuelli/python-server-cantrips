@@ -7,9 +7,9 @@ class ProtocolLayer(object):
     The next layer could also forward it to the next layer or process it. Additionally, a layer can definitely
       reject a given message (the message would be processed as if no layer was able to handle it).
 
-    Subclasses should redefine __init__(self, translator) like this:
+    Subclasses should redefine __init__(self, processor_class) like this:
 
-        super(MySubclass, self).__init__(translator)
+        super(MySubclass, self).__init__(processor_class)
         self.add_namespace_handler(CommandSpec(...), self._doSomethingForCommandsInANamespace)
         self.add_command_handler(CommandSpec(...), ANY_COMMAND, self._doSomethingForCommandsInANamespace
         ... # We specify behavior to every command in a specific namespace.
@@ -23,7 +23,8 @@ class ProtocolLayer(object):
         ... # HOWEVER the commands and namespaces cannot be translated because they are not known beforehand:
         ... #   They must be added later.
         ...
-        self.translator.namespace(CommandSpec(...)).add_command(CommandSpec(...))
+        self.processor_class.feed_translator(CommandSpec(...))
+        self.processor_class.feed_translator(CommandSpec(...), CommandSpec(...))
         ... # Explicitly add the namespaces and commands to the translators.
         ...
         ... # Handlers must be h(self, socket, message), where self is a layer object and the
@@ -32,7 +33,7 @@ class ProtocolLayer(object):
         ... # - They can call layer.nobody_can_handle() to forward the message to the next layer.
 
     Methods:
-    - __init__(self, translator): Override it to add custom handlers.
+    - __init__(self, processor_class): Override it to add custom handlers.
     - add_namespace_handler(namespace or ANY_COMMAND, handler_method): Call it inside __init__ to create
       a namespace handler.
     - add_command_handler(namespace or ANY_COMMAND, code or ANY_COMMAND, handler_method): Call it inside __init__ to
@@ -63,17 +64,17 @@ class ProtocolLayer(object):
 
     # ############################################################ #
 
-    def __init__(self, translator):
+    def __init__(self, processor_class):
         """
         Subclasses will initialize the protocol to specify handlers when overriding this method.
-        A translator will be used to "feed" translations (e.g. when creating a command handler).
+        A processor_class will be used to "feed" translations (e.g. when creating a command handler).
         """
         self.__handlers = {}
-        self.__translator = translator
+        self.__processor_class = processor_class
 
     @property
-    def translator(self):
-        return self.__translator
+    def processor_class(self):
+        return self.__processor_class
 
     def i_cannot_handle(self):
         """
@@ -115,11 +116,7 @@ class ProtocolLayer(object):
         if namespace is ANY_COMMAND and command is not ANY_COMMAND:
             raise ValueError("The specified value for command must be ANY_COMMAND if the namespace is also ANY_COMMAND")
 
-        if namespace is not ANY_COMMAND:
-            ns_ = self.translator.namespace(namespace)
-            if command is not ANY_COMMAND:
-                ns_.add_command(command)
-
+        self.processor_class.feed_translator(namespace, command)
         self.__handlers[(namespace, command)] = handler
 
     def process_message(self, socket, message):
