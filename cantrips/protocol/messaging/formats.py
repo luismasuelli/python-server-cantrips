@@ -192,7 +192,7 @@ class Translator(object):
     def format(self):
         return self.__format
 
-    def add_namespace(self, spec):
+    def namespace(self, spec):
         """
         Adds a new namespace translation. ANY_COMMAND cannot be translated with this method.
         :param spec: A CommandSpec instance to add.
