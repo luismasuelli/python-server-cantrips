@@ -1,9 +1,10 @@
 from future.utils import PY3
 from cantrips.features import Feature
+from cantrips.types.exception import factory
 from collections import namedtuple
 from enum import Enum
 import json
-
+from cantrips.protocol.messaging import Message
 
 _32bits = (1 << 32) - 1
 
@@ -184,6 +185,16 @@ class Translator(object):
       (say: string or integer) while C is a CommandSpec instance.
     """
 
+    Error = factory([
+        'UNEXPECTED_BINARY',
+        'UNEXPECTED_TEXT',
+        'EXPECTED_MAP',
+        'EXPECTED_MAP_WITH_CODE',
+        'EXPECTED_ARGS_AS_LIST',
+        'EXPECTED_KWARGS_AS_DICT',
+        'UNKNOWN_COMMAND'
+    ])
+
     def __init__(self, format):
         self.__format = format
         self.__map = {}
@@ -211,3 +222,72 @@ class Translator(object):
         namespace, code = self.format.split(full_command)
         namespace_map = self.__map.get(namespace, UNKNOWN_NAMESPACE_MAP)
         return namespace_map.spec, namespace_map.map[code]
+
+    def untranslate(self, namespace, code):
+        """
+        Untranslated a translated message. The inverse of translate(full_command).
+        :param namespace: A CommandSpec to pass.
+        :param code: A CommandSpec to pass.
+        :returns: string or integer of 64bits.
+        """
+        return self.format.join(self.format.spec_value(namespace), self.format.spec_value(code))
+
+    def parse_data(self, data, binary=None):
+        """
+        Parses the incomming data. Binary is a tri-state variable:
+        - False: The parsed data is required to be text/json.
+          It is an error to receive a binary content if this translator has a text format.
+        - True: The parsed data is required to be binary/msgpack.
+          It is an error to receive a text content if this translator has a binary format.
+        - None: The parsed data is not required any format.
+          The format is decided by the in-use translator.
+
+        Returns a Message instance.
+
+        :param data: Message to be parsed (str or unicode or bytes data).
+        :param binary: Tri-state boolean telling the expected input value type.
+        :returns: A parsed Message
+        """
+
+        if binary is not None:
+            if binary and self.format == Formats.FORMAT_STRING:
+                raise self.Error("Binary parsing was requested, but this translator uses a JSON format",
+                                 self.Error.UNEXPECTED_BINARY)
+            if not binary and self.format == Formats.FORMAT_STRING:
+                raise self.Error("Text parsing was requested, but this translator uses a MSGPACK format",
+                                 self.Error.UNEXPECTED_TEXT)
+
+        data = self.format.broker.loads(data)
+        if not isinstance(data, dict):
+            raise self.Error("Received data is not a valid map object (JSON literal / Msgpack Map)",
+                             self.Error.EXPECTED_MAP)
+
+        if 'code' not in dict:
+            raise self.Error("Received data has not a `code` member", self.Error.EXPECTED_MAP_WITH_CODE)
+
+        try:
+            ns, code = self.translate(dict['code'])
+        except KeyError:
+            raise self.Error("Expected message with a known pair of namespace/code", self.Error.UNKNOWN_COMMAND)
+
+        args = data.get('args', ())
+        if not isinstance(args, (list, tuple)):
+            raise self.Error("Expected message args as list", self.Error.EXPECTED_ARGS_AS_LIST)
+        kwargs = data.get('kwargs', {})
+        if not isinstance(kwargs, dict):
+            raise self.Error("Expected message kwargs as dict", self.Error.EXPECTED_KWARGS_AS_DICT)
+        return Message(ns, code, *args, **kwargs)
+
+    def serialize(self, message):
+        """
+        Serializes the message data, ready to be sent.
+
+        :param message: A Message instance.
+        :returns: data to be sent.
+        """
+
+        return self.format.broker.dumps({
+            'code': self.untranslate(message.code[0], message.code[1]),
+            'args': message.args,
+            'kwargs': message.kwargs
+        })
