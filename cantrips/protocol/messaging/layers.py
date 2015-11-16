@@ -30,6 +30,17 @@ class ProtocolLayer(object):
         ... #   callable is meant to be an instance method in the same layer.
         ... # - They can call layer.i_cant_handle() to forward the message to the next layer.
         ... # - They can call layer.nobody_can_handle() to forward the message to the next layer.
+
+    Methods:
+    - __init__(self, translator): Override it to add custom handlers.
+    - add_namespace_handler(namespace or ANY_COMMAND, handler_method): Call it inside __init__ to create
+      a namespace handler.
+    - add_command_handler(namespace or ANY_COMMAND, code or ANY_COMMAND, handler_method): Call it inside __init__ to
+      create a command handler.
+    - _<handler>(self, socket, message): Any handler to be added.
+    - i_cannot_handle(): Use it inside a handler to make the next layer process the message.
+    - nobody_can_handle(): Use it inside a handler to make the message unprocessable by any handler.
+    - process_message(socket, message): You will never need to call this method. It is part of the core.
     """
 
     class Exception(Exception):
@@ -128,4 +139,4 @@ class ProtocolLayer(object):
                    _get(ANY_COMMAND, ANY_COMMAND) or
                    (lambda socket, message: self.i_cannot_handle()))
 
-        handler(socket, self, message)
+        handler(socket, message)
