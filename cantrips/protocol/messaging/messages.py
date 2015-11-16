@@ -33,15 +33,5 @@ class Message(Packet):
     Both values, when compound, build the `code` property.
     """
 
-    def __init__(self, namespace, command, direction, *args, **kwargs):
+    def __init__(self, namespace, command, *args, **kwargs):
         super(Message, self).__init__((namespace, command), *args, **kwargs)
-        self.__direction = direction
-
-    @property
-    def direction(self):
-        return self.__direction
-
-    def __setattr__(self, key, value):
-        if key == '_Message__direction':
-            return object.__setattr__(self, key, value)
-        return super(Message, self).__setattr__(key, value)
