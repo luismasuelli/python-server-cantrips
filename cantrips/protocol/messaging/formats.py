@@ -134,6 +134,9 @@ class Formats(int, Enum):
             self.__exceptions = _EXCEPTIONS[self.value]()
         return self.__exceptions
 
+    def spec_value(self, spec):
+        return spec[self.value]
+
 
 class CommandSpec(namedtuple('_CommandSpec', _MEMBER_NAMES)):
     """
@@ -147,3 +150,67 @@ class CommandSpec(namedtuple('_CommandSpec', _MEMBER_NAMES)):
     def as_keyword(self):
         return self.string
 ANY_COMMAND = CommandSpec(0xFFFFFFFF, '__any__')
+UNKNOWN_COMMAND = CommandSpec(0x00000000, '__unknown__')
+
+
+def _cannot_add_any_or_unknown(command):
+    if command in (ANY_COMMAND, UNKNOWN_COMMAND):
+        raise ValueError('Cannot add to translation neither ANY_COMMAND nor UNKNOWN_COMMAND'
+                         ' as neither namespace or code')
+
+
+class CommandNamespaceMap(namedtuple('_CommandNamespaceMap', ['translator', 'spec', 'map'])):
+    """
+    A (spec='...', map={...}) tuple.
+    """
+
+    def __new__(cls, translator, ns_spec):
+        return super(CommandNamespaceMap, cls).__new__(cls, translator, ns_spec, {})
+
+    def add_command(self, key, spec):
+        """
+        Adds a command to the map by its code. ANY_COMMAND / UNKNOWN_COMMAND cannot be translated with this method.
+        """
+        _cannot_add_any_or_unknown(spec)
+        self.map[key] = spec
+        return self
+UNKNOWN_NAMESPACE_MAP = CommandNamespaceMap(None, UNKNOWN_COMMAND)
+
+
+class Translator(object):
+    """
+    Stores a map of commands, according to the chosen command format.
+    It will keep an inner mapping like {F_ : (C, {F_ : C})} where F_ is the appropriate received format
+      (say: string or integer) while C is a CommandSpec instance.
+    """
+
+    def __init__(self, format):
+        self.__format = format
+        self.__map = {}
+
+    @property
+    def format(self):
+        return self.__format
+
+    def add_namespace(self, spec):
+        """
+        Adds a new namespace translation. ANY_COMMAND / UNKNOWN_COMMAND cannot be translated with this method.
+        :param spec: A CommandSpec instance to add.
+        :returns: A just-created CommandNamespaceMap instance.
+        """
+        _cannot_add_any_or_unknown(spec)
+        to_add = CommandNamespaceMap(self, spec)
+        self.__map[self.format.spec_value(spec)] = to_add
+        return to_add
+
+    def translate(self, full_command):
+        """
+        Breaks a full command in namespace and code. Values could be UNKNOWN_COMMAND.
+        If the returned code is UNKNOWN_COMMAND, it is enough to see that something went
+          wrong in the received command.
+        :param spec: A raw value, according to the format.
+        :returns: A tuple with (namespace, code).
+        """
+        namespace, code = self.format.split(full_command)
+        namespace_map = self.__map.get(namespace, UNKNOWN_NAMESPACE_MAP)
+        return namespace_map.spec, namespace_map.map.get(code, UNKNOWN_COMMAND)
