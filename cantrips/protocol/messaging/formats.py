@@ -5,61 +5,7 @@ from enum import Enum
 import json
 
 
-binary = bytes if PY3 else str
-string = str if PY3 else basestring
-text = str if PY3 else unicode
-integer = (int,) if PY3 else (int, long)
-
-
 _32bits = (1 << 32) - 1
-
-
-class Formats(int, Enum):
-    """
-    Parsing formats for messages. Intended:
-    - 0 -> string -> JSON.
-    - 1 -> integer -> MsgPack.
-    """
-    FORMAT_STRING = 0
-    FORMAT_INTEGER = 1
-
-    def command_value(self, command):
-        return command[self.value]
-
-
-def split_command(command):
-    """
-    Breaks a command in two parts: namespace and code. Either a string or a 64bit integer
-      are expected (in amd64 architectures, int is 64bit wide, although in python3, all the
-      integer numbers are of type int). Bits above the 63rd are ignored (the first is 0th).
-    """
-    if isinstance(command, string):
-        return command.rsplit('.', 1)
-    elif isinstance(command, integer):
-        return (command >> 32) & _32bits, command & _32bits
-    else:
-        raise TypeError('`split_command(command)` expects either a string or an integer')
-
-
-def join_command(namespace, code):
-    """
-    Joins namespace and code in a single command. Either two strings or two integer numbers
-      are expected. Bits above the 31th in each number are ignored (the first is 0th).
-    """
-    if isinstance(namespace, text) and isinstance(code, text):
-        return "%s.%s" % (namespace, code)
-    elif isinstance(namespace, integer) and isinstance(code, integer):
-        return ((namespace & _32bits) << 32) | code & _32bits
-    else:
-        raise TypeError('`join_command(namespace, code)` expects either two strings or two integer numbers')
-
-
-CommandSpec = namedtuple('CommandSpec', ['string', 'integer'])
-CommandSpec.__doc__ = """
-This class will be used to instantiate each namespace and code (they, together, conform a command),
-  which can be specified by integer or by string (regardless the output format, either msgpack or json).
-"""
-ANY_COMMAND = CommandSpec(0xFFFFFFFF, '__any__')
 
 
 class MsgPackFeature(Feature):
@@ -81,25 +27,123 @@ class MsgPackFeature(Feature):
         return "You need to install msgpack for this to work (pip install msgpack-python>=0.4.6)"
 
 
-def get_serializer(serializer_type):
+def _json_serializer():
     """
-    Gets an appropriate serializer based on the specified type.
+    Returns an object with dumps() and loads() for json format.
     """
-    if serializer_type == 'json':
-        return json
-    elif serializer_type == 'msgpack':
-        return MsgPackFeature.import_it()[0]
-    else:
-        raise ValueError('Unexpected serializer type: %s' % serializer_type)
+    return json
 
 
-def get_serializer_exceptions(serializer_type):
+def _msgpack_serializer():
     """
-    Gets an appropriate set of serializer exceptions based on the specified type.
+    Returns an object with dumps() and loads() for msgpack format.
     """
-    if serializer_type == 'json':
-        return TypeError, ValueError
-    elif serializer_type == 'msgpack':
-        return MsgPackFeature.import_it()[1],
-    else:
-        raise ValueError('Unexpected serializer type: %s' % serializer_type)
+    return MsgPackFeature.import_it()[0]
+
+
+def _json_serializer_exceptions():
+    """
+    Returns a tuple containing only the json-related exceptions.
+    """
+    return TypeError, ValueError
+
+
+def _msgpack_serializer_exceptions():
+    """
+    Returns a tuple containing only the MsgPack exceptions.
+    """
+    return MsgPackFeature.import_it()[1],
+
+
+def _split_string_command(command):
+    """
+    Splits as dotted string. The code is the last part of the string.
+    E.g. a.b.c is splitted as a.b, c
+    """
+    try:
+        a, b = command.rsplit('.', 1)
+        return a, b
+    except:
+        raise ValueError("Command to parse MUST be a dotted string")
+
+
+def _split_integer_command(command):
+    """
+    Splits a 64bit integer into high 32 bits and low 32 bits.
+    """
+    return (command >> 32) & _32bits, command & _32bits
+
+
+def _join_string_command(ns, code):
+    """
+    Joins two strings as a dot-separated string. E.g. a.b, c will be joined as a.b.c.
+    """
+    return "%s.%s" % (ns, code)
+
+
+def _join_integer_command(ns, code):
+    """
+    Joins two integers as a 64bit integer, being the ns the 32 MSB and the code the 32 LSB.
+    """
+    return ((ns & _32bits) << 32) | code & _32bits
+
+
+_JOINERS = (_join_string_command, _join_integer_command)
+_SPLITTERS = (_split_string_command, _split_integer_command)
+_BROKERS = (_json_serializer, _msgpack_serializer)
+_EXCEPTIONS = (_json_serializer_exceptions, _msgpack_serializer_exceptions)
+_MEMBER_NAMES = ('string', 'integer')
+
+
+class Formats(int, Enum):
+    """
+    Parsing formats for messages. Intended:
+    - 0 -> string -> JSON.
+    - 1 -> integer -> MsgPack.
+    """
+    FORMAT_STRING = 0
+    FORMAT_INTEGER = 1
+
+    @property
+    def split(self):
+        if not hasattr(self, '__split'):
+            self.__split = _SPLITTERS[self.value]
+        return self.__split
+
+    @property
+    def join(self):
+        if not hasattr(self, '__join'):
+            self.__join = _JOINERS[self.value]
+        return self.__join
+
+    @property
+    def member_name(self):
+        if not hasattr(self, '__member'):
+            self.__member = _MEMBER_NAMES[self.value]
+        return self.__member
+
+    @property
+    def broker(self):
+        if not hasattr(self, '__broker'):
+            self.__broker = _BROKERS[self.value]()
+        return self.__broker
+
+    @property
+    def exceptions(self):
+        if not hasattr(self, '__exceptions'):
+            self.__exceptions = _EXCEPTIONS[self.value]()
+        return self.__exceptions
+
+
+class CommandSpec(namedtuple('_CommandSpec', _MEMBER_NAMES)):
+    """
+    This class will be used to instantiate each namespace and code (they, together, conform a command),
+      which can be specified by integer or by string (regardless the output format, either msgpack or json).
+
+    However, a message *must* have *str* keyword arguments, so as_keyword() will always yield the string
+      component.
+    """
+
+    def as_keyword(self):
+        return self.string
+ANY_COMMAND = CommandSpec(0xFFFFFFFF, '__any__')
