@@ -3,7 +3,7 @@ try:
 except:
     raise ImportError("You need to install twisted for this to work (pip install twisted==14.0.2)")
 import json
-from cantrips.protocol.messaging import MessageProcessor
+from cantrips.protocol.messaging.processor import MessageProcessor
 
 
 class MessageProtocol(Protocol, MessageProcessor):
@@ -26,7 +26,7 @@ class MessageProtocol(Protocol, MessageProcessor):
         self.transport.write(json.dumps({'code': code, 'reason': reason}))
         return self.transport.loseConnection()
 
-    def _conn_send(self, data):
+    def _conn_send(self, data, binary=None):
         return self.transport.write(data)
 
     def connectionMade(self):
