@@ -291,3 +291,21 @@ class Translator(object):
             'args': message.args,
             'kwargs': message.kwargs
         })
+
+
+class JSONTranslator(Translator):
+    """
+    Translator using JSON format.
+    """
+
+    def __init__(self):
+        super(JSONTranslator, self).__init__(Formats.FORMAT_STRING)
+
+
+class MsgPackTranslator(Translator):
+    """
+    Translator using MsgPack format.
+    """
+
+    def __init__(self):
+        super(MsgPackTranslator, self).__init__(Formats.FORMAT_INTEGER)
