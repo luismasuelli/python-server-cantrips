@@ -192,6 +192,7 @@ class Translator(object):
         'EXPECTED_MAP_WITH_CODE',
         'EXPECTED_ARGS_AS_LIST',
         'EXPECTED_KWARGS_AS_DICT',
+        'EXPECTED_KWARGS_KEYS_AS_STRING',
         'UNKNOWN_COMMAND'
     ])
 
@@ -276,7 +277,10 @@ class Translator(object):
         kwargs = data.get('kwargs', {})
         if not isinstance(kwargs, dict):
             raise self.Error("Expected message kwargs as dict", self.Error.EXPECTED_KWARGS_AS_DICT)
-        return Message(ns, code, *args, **kwargs)
+        try:
+            return Message(ns, code, *args, **kwargs)
+        except SyntaxError as e:
+            raise self.Error("Expected message kwargs keys as string", self.Error.EXPECTED_KWARGS_KEYS_AS_STRING)
 
     def serialize(self, message):
         """
