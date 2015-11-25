@@ -1,4 +1,3 @@
-from future.utils import PY3
 from cantrips.features import Feature
 from cantrips.types.exception import factory
 from collections import namedtuple
