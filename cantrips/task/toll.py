@@ -1,4 +1,4 @@
-from threading import Lock, Event
+from threading import Event
 from cantrips.types.exception import factory
 from .features import TornadoFutureFeature, TwistedDeferredFeature, ConcurrentFutureFeature
 
