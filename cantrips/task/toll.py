@@ -1,6 +1,6 @@
 from threading import Event
 from cantrips.types.exception import factory
-from .features import TornadoFutureFeature, TwistedDeferredFeature, ConcurrentFutureFeature
+from .features import TornadoFutureFeature, TwistedDeferredFeature, ConcurrentFutureFeature, ThreadedEventFeature
 
 
 class Toll(object):
@@ -125,7 +125,7 @@ class ThreadEventToll(Toll):
     """
 
     def __init__(self):
-        self._event = Event()
+        self._event = ThreadedEventFeature.import_it()()
         self._value = None
 
     def _demand(self):
