@@ -1,9 +1,11 @@
 try:
     from twisted.internet.protocol import Factory, Protocol, connectionDone
+    from twisted.internet import reactor
 except:
     raise ImportError("You need to install twisted for this to work (pip install twisted==14.0.2)")
 import json
 from cantrips.protocol.messaging.processor import MessageProcessor
+from cantrips.task.timed import TwistedTimeout
 
 
 class MessageProtocol(Protocol, MessageProcessor):
@@ -34,3 +36,6 @@ class MessageProtocol(Protocol, MessageProcessor):
 
     def dataReceived(self, data):
         self._conn_message(data)
+
+    def _create_timeout(self, seconds, callback):
+        return TwistedTimeout(reactor, seconds, callback)

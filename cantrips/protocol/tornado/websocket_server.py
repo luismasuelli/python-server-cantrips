@@ -2,9 +2,11 @@ from future.utils import istext
 
 try:
     from tornado.websocket import WebSocketHandler
+    from tornado.ioloop import IOLoop
 except:
     raise ImportError("You need to install tornado for this to work (pip install tornado==4.0.2)")
 from cantrips.protocol.messaging.processor import MessageProcessor
+from cantrips.task.timed import TornadoTimeout
 
 
 class MessageHandler(WebSocketHandler, MessageProcessor):
@@ -41,3 +43,6 @@ class MessageHandler(WebSocketHandler, MessageProcessor):
     def on_message(self, message):
         # Tornado Websocket identifies the body being binary if it is not Unicode.
         self._conn_message(message, not istext(message))
+
+    def _create_timeout(self, seconds, callback):
+        return TornadoTimeout(IOLoop.current(), seconds, callback)

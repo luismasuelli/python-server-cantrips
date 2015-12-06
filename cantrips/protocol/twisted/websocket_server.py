@@ -1,10 +1,12 @@
 try:
     from autobahn.twisted.websocket import WebSocketServerProtocol
+    from twisted.internet import reactor
 except:
     raise ImportError("You need to install twisted (pip install twisted==14.0.2) AND Autobahn for Python "
                       "(pip install autobahn) for this to work. As an alternative, you can install both Autobahn "
                       "and Twisted by executing: pip install autobahn[twisted]")
 from cantrips.protocol.messaging.processor import MessageProcessor
+from cantrips.task.timed import TwistedTimeout
 
 
 class MessageProtocol(WebSocketServerProtocol, MessageProcessor):
@@ -39,3 +41,6 @@ class MessageProtocol(WebSocketServerProtocol, MessageProcessor):
         # Unlike Tornado, here we have a redundant isBinary variable but under the hoods the
         #   same processing happened to identify unicode and str for text and binary, respectively.
         self._conn_message(payload, isBinary)
+
+    def _create_timeout(self, seconds, callback):
+        return TwistedTimeout(reactor, seconds, callback)

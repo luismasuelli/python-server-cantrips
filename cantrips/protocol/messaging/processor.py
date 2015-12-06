@@ -85,6 +85,9 @@ class MessageProcessor(six.with_metaclass(MessageProcessorMetaClass)):
     def _conn_send(self, data, binary=None):
         raise NotImplementedError
 
+    def _create_timeout(self, seconds, callback):
+        raise NotImplementedError
+
     # ###################### Translation-related ############################# #
 
     def _trans_serialize(self, message):
@@ -157,6 +160,14 @@ class MessageProcessor(six.with_metaclass(MessageProcessorMetaClass)):
             self._conn_close(1000)
         except Exception as e:
             self._unknown_exception(e, 'terminate')
+
+    def start_timeout(self, seconds, callback):
+        timeout = self._create_timeout(seconds, callback)
+        timeout.start()
+        return timeout
+
+    def stop_timeout(self, timeout):
+        timeout.force_stop()
 
     # ############################ Internal Events/Hooks ########################### #
 
